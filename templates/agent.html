@@ -338,11 +338,23 @@
     formData.append("photo", selectedPhoto);
 
     var response = await fetch("/api/done", {
-      method: "POST",
-      body:   formData
-    });
+  method: "POST",
+  body:   formData
+});
 
-    var data = await response.json();
+// Check if server responded properly
+if (!response.ok) {
+  showMsg(
+    document.getElementById("done-msg"),
+    "Server error: " + response.status + " " + response.statusText,
+    "error"
+  );
+  btn.disabled    = false;
+  btn.textContent = "✅ Submit Photo & Mark as Delivered";
+  return;
+}
+
+var data = await response.json();
 
     if (data.success) {
       showMsg(
