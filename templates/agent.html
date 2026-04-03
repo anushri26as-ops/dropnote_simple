@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DropNote - Agent Page</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1a1a2e;
+      color: #f0f0f0;
+      display: flex;
+      justify-content: center;
+      padding: 40px 16px;
+    }
+
+    .box {
+      background: #16213e;
+      border-radius: 10px;
+      padding: 30px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+
+    h1 { font-size: 22px; margin-bottom: 4px; color: #f0a500; }
+    p  { color: #aaa; font-size: 14px; margin-bottom: 20px; }
+
+    .badge {
+      display: inline-block;
+      background: rgba(240,165,0,0.15);
+      border: 1px solid rgba(240,165,0,0.3);
+      color: #f0a500;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: bold;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      background: #0f3460;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: white;
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 12px;
+    }
+    input:focus { border-color: #f0a500; }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .btn-amber { background: #f0a500; color: #1a1a2e; font-weight: bold; }
+    .btn-green { background: #2d6a4f; color: white; }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    hr { border: none; border-top: 1px solid #333; margin: 20px 0; }
+
+    /* Instruction box shown after lookup */
+    .instr-box {
+      background: rgba(240,165,0,0.07);
+      border: 1px solid rgba(240,165,0,0.2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .instr-row { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #333; }
+    .instr-row:last-child { border-bottom: none; }
+    .instr-label { color: #888; font-size: 12px; min-width: 80px; }
+    .instr-value { font-size: 14px; font-weight: bold; }
+    .instr-value.highlight { color: #f0a500; font-size: 16px; }
+
+    /* Checklist */
+    .checklist { margin-bottom: 16px; }
+    .checklist p { color: #aaa; font-size: 13px; margin-bottom: 10px; }
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      font-size: 13px;
+      border-bottom: 1px solid #333;
+      cursor: pointer;
+    }
+    .check-item:last-child { border-bottom: none; }
+    .check-item input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
+    /* Status messages */
+    .message {
+      display: none;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-size: 14px;
+      text-align: center;
+    }
+    .message.success { background: rgba(45,106,79,0.2); border: 1px solid #2d6a4f; color: #5aaa7e; }
+    .message.error   { background: rgba(193,57,43,0.2); border: 1px solid #c1392b; color: #e07b6e; }
+
+    /* Sections hidden by default */
+    #section-instructions { display: none; }
+    #section-checklist    { display: none; }
+
+    .customer-link { text-align: center; font-size: 13px; color: #666; margin-top: 16px; }
+    .customer-link a { color: #f0a500; }
+  </style>
+</head>
+
+<body>
+<div class="box">
+
+  <div class="badge">🚚 Agent Portal</div>
+  <h1>DropNote</h1>
+  <p>
+    OTP not answered? Read the customer's phone number
+    from the package label and enter it below.
+  </p>
+
+  <!-- STEP 1: ENTER PHONE NUMBER -->
+  <label>Customer's Phone Number (from package label)</label>
+  <input type="text" id="inp-phone" placeholder="e.g. 9876543210" maxlength="15"/>
+  <button class="btn btn-amber" id="lookup-btn" onclick="lookupCustomer()">
+    🔍 Find Delivery Instructions
+  </button>
+
+  <div class="message" id="lookup-msg"></div>
+
+  <!-- STEP 2: INSTRUCTIONS (shown after lookup) -->
+  <div id="section-instructions">
+    <hr/>
+    <p style="font-weight:bold; color:#f0a500; margin-bottom:12px">
+      📋 Delivery Instructions
+    </p>
+
+    <div class="instr-box">
+      <div class="instr-row">
+        <span class="instr-label">Leave at</span>
+        <span class="instr-value highlight" id="i-leave">—</span>
+      </div>
+      <div class="instr-row">
+        <span class="instr-label">Customer</span>
+        <span class="instr-value" id="i-name">—</span>
+      </div>
+      <div class="instr-row">
+        <span class="instr-label">Address</span>
+        <span class="instr-value" id="i-address">—</span>
+      </div>
+      <div class="instr-row">
+        <span class="instr-label">Note</span>
+        <span class="instr-value" id="i-note">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: CHECKLIST + PHOTO + DONE -->
+  <div id="section-checklist">
+    <div class="checklist">
+      <p>Before marking delivered, confirm:</p>
+      <label class="check-item">
+        <input type="checkbox" id="chk1"/>
+        I rang the doorbell and attempted OTP
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="chk2"/>
+        I waited for the customer to respond
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="chk3"/>
+        I am at the correct address
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="chk4"/>
+        I followed the backup instruction above
+      </label>
+    </div>
+
+    <!-- PHOTO UPLOAD -->
+    <!-- This is simple - just a file input, like attaching a photo to an email -->
+    <label style="display:block; margin-bottom:6px; color:#aaa; font-size:13px; font-weight:bold">
+      📷 Upload Photo Proof (required)
+    </label>
+    <input
+      type="file"
+      id="inp-photo"
+      accept="image/*"
+      capture="environment"
+      style="width:100%; padding:10px; background:#0f3460; border:1px solid #444;
+             border-radius:6px; color:white; margin-bottom:8px; font-size:13px;"
+    />
+
+    <!-- Preview of selected photo -->
+    <img id="photo-preview" style="display:none; width:100%; border-radius:6px;
+         margin-bottom:10px; border:1px solid #444;" alt="Photo preview"/>
+
+    <button class="btn btn-green" id="done-btn" onclick="markDone()">
+      ✅ Submit Photo & Mark as Delivered
+    </button>
+
+    <div class="message" id="done-msg"></div>
+  </div>
+
+  <div class="customer-link">
+    <a href="/">← Customer Page</a> &nbsp;|&nbsp;
+    <a href="/admin">Admin Dashboard</a>
+  </div>
+
+</div>
+
+<script>
+  // Stores the database ID of the found record
+  var currentId = null;
+
+  // STEP 1: Look up customer by phone number
+  async function lookupCustomer() {
+    var phone  = document.getElementById("inp-phone").value.trim();
+    var btn    = document.getElementById("lookup-btn");
+    var msg    = document.getElementById("lookup-msg");
+
+    if (!phone) {
+      showMsg(msg, "Please enter a phone number", "error");
+      return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = "Looking up...";
+
+    // Send phone number to Flask
+    var response = await fetch("/api/lookup", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ phone: phone })
+    });
+
+    var data = await response.json();
+
+    if (data.success) {
+      // Save the record ID for later
+      currentId = data.id;
+
+      // Fill in the instruction box
+      document.getElementById("i-leave").textContent   = data.leave_at;
+      document.getElementById("i-name").textContent    = data.name;
+      document.getElementById("i-address").textContent = data.address;
+      document.getElementById("i-note").textContent    = data.note;
+
+      // Show the instructions and checklist
+      document.getElementById("section-instructions").style.display = "block";
+      document.getElementById("section-checklist").style.display    = "block";
+
+      showMsg(msg, "✅ Found! Follow the instructions below.", "success");
+
+    } else {
+      showMsg(msg, "❌ " + data.message, "error");
+    }
+
+    btn.disabled    = false;
+    btn.textContent = "🔍 Find Delivery Instructions";
+  }
+
+  // Show preview when agent selects a photo
+  document.getElementById("inp-photo").addEventListener("change", function() {
+    var file = this.files[0];
+    if (!file) return;
+
+    // FileReader reads the photo and shows it as a preview
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var preview = document.getElementById("photo-preview");
+      preview.src          = e.target.result;
+      preview.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // STEP 2: Mark delivery as done
+  async function markDone() {
+    // Check all 4 boxes are ticked
+    var allChecked =
+      document.getElementById("chk1").checked &&
+      document.getElementById("chk2").checked &&
+      document.getElementById("chk3").checked &&
+      document.getElementById("chk4").checked;
+
+    if (!allChecked) {
+      showMsg(
+        document.getElementById("done-msg"),
+        "Please tick all boxes before marking as delivered.",
+        "error"
+      );
+      return;
+    }
+
+    // Check photo is selected
+    var photoInput = document.getElementById("inp-photo");
+    if (!photoInput.files[0]) {
+      showMsg(
+        document.getElementById("done-msg"),
+        "Please take or upload a photo proof.",
+        "error"
+      );
+      return;
+    }
+
+    var btn = document.getElementById("done-btn");
+    btn.disabled    = true;
+    btn.textContent = "Uploading...";
+
+    // FormData is used when sending files
+    // It works differently from JSON - it can carry photos
+    var formData = new FormData();
+    formData.append("id",    currentId);
+    formData.append("photo", photoInput.files[0]);
+
+    // Note: when sending FormData, do NOT set Content-Type header
+    // The browser sets it automatically with the right format
+    var response = await fetch("/api/done", {
+      method: "POST",
+      body:   formData
+    });
+
+    var data = await response.json();
+
+    if (data.success) {
+      showMsg(
+        document.getElementById("done-msg"),
+        "🎉 Photo uploaded! Delivery marked complete.",
+        "success"
+      );
+      btn.style.display = "none";
+    } else {
+      showMsg(document.getElementById("done-msg"), "❌ " + data.message, "error");
+      btn.disabled    = false;
+      btn.textContent = "✅ Submit Photo & Mark as Delivered";
+    }
+  }
+
+  // Helper: show a message
+  function showMsg(el, text, type) {
+    el.textContent   = text;
+    el.className     = "message " + type;
+    el.style.display = "block";
+  }
+</script>
+
+</body>
+</html>
