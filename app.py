@@ -22,7 +22,7 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 # Folder where agent photos are saved
-UPLOAD_FOLDER = "static/uploads"
+UPLOAD_FOLDER = "/data/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # creates folder if it doesn't exist
 
 
@@ -34,7 +34,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # creates folder if it doesn't exist
 
 def create_table():
     # Connect to database file (creates it if it doesn't exist)
-    conn = sqlite3.connect("dropnote.db")
+    conn = sqlite3.connect("/data/dropnote.db")
 
     # Create our table with these columns:
     conn.execute("""
@@ -75,7 +75,7 @@ def agent_page():
 # When someone visits http://127.0.0.1:5000/admin
 @app.route("/admin")
 def admin_page():
-    conn = sqlite3.connect("dropnote.db")
+    conn = sqlite3.connect("/data/dropnote.db")
     conn.row_factory = sqlite3.Row  # so we can use row["name"] instead of row[0]
     records = conn.execute("SELECT * FROM preferences ORDER BY id DESC").fetchall()
     conn.close()
@@ -104,7 +104,7 @@ def save_preference():
         return jsonify({"success": False, "message": "Please fill all fields"})
 
     # Save to database
-    conn = sqlite3.connect("dropnote.db")
+    conn = sqlite3.connect("/data/dropnote.db")
     conn.execute("""
         INSERT INTO preferences (name, phone, address, leave_at, note, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -125,7 +125,7 @@ def lookup():
         return jsonify({"success": False, "message": "Please enter a phone number"})
 
     # Search database for this phone number
-    conn = sqlite3.connect("dropnote.db")
+    conn = sqlite3.connect("/data/dropnote.db")
     conn.row_factory = sqlite3.Row
     record = conn.execute(
         "SELECT * FROM preferences WHERE phone = ? AND status = 'pending' ORDER BY id DESC LIMIT 1",
@@ -168,7 +168,7 @@ def mark_done():
     photo.save(os.path.join(UPLOAD_FOLDER, filename))
 
     # Update database - mark as delivered and save photo filename
-    conn = sqlite3.connect("dropnote.db")
+    conn = sqlite3.connect("/data/dropnote.db")
     conn.execute(
         "UPDATE preferences SET status = 'delivered', photo = ? WHERE id = ?",
         (filename, record_id)
