@@ -2,43 +2,34 @@
 # DropNote - Backup Delivery Instruction System
 # app.py
 # ======================================================
-# This file is the BRAIN of our app.
-# It runs a web server and handles saving/reading data.
-#
-# To run this file:
-#   python app.py
-#
-# Then open your browser and go to:
-#   http://127.0.0.1:5000
-# ======================================================
 
 from flask import Flask, request, jsonify, render_template, send_from_directory
 import sqlite3
 import os
-import traceback
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
-# Create the Flask app (our web server)
 app = Flask(__name__)
 
-# Folder where agent photos are saved
-UPLOAD_FOLDER = "/data/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # creates folder if it doesn't exist
-print(f"[startup] Upload folder ready: {UPLOAD_FOLDER}")
+# On Railway /data exists (permanent Volume storage)
+# On laptop it doesn't exist so we use local folder
+if os.path.exists("/data"):
+    DB_PATH       = "/data/dropnote.db"
+    UPLOAD_FOLDER = "/data/uploads"
+else:
+    DB_PATH       = "dropnote.db"
+    UPLOAD_FOLDER = "static/uploads"
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
 # ------------------------------------------------------
-# STEP 1: DATABASE SETUP
-# We use SQLite - it saves data in a simple file.
-# No installation needed. File is created automatically.
+# DATABASE SETUP
 # ------------------------------------------------------
 
 def create_table():
-    # Connect to database file (creates it if it doesn't exist)
-    conn = sqlite3.connect("/data/dropnote.db")
-
-    # Create our table with these columns:
+    # Creates the table if it doesn't exist yet
+    conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS preferences (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,65 +43,56 @@ def create_table():
             created_at    TEXT NOT NULL
         )
     """)
+    conn.commit()
+    conn.close()
 
-    conn.commit()  # save the changes
-    conn.close()   # close the connection
-
-
-# Run once at import time so Gunicorn (and direct runs) both initialise the DB
+# Runs when app starts — works both locally and on Railway
 create_table()
 
 
 # ------------------------------------------------------
-# STEP 2: PAGE ROUTES
-# A route is a URL that shows a page.
+# PAGE ROUTES
 # ------------------------------------------------------
 
-# When someone visits http://127.0.0.1:5000/
 @app.route("/")
 def customer_page():
     return render_template("customer.html")
 
-
-# When someone visits http://127.0.0.1:5000/agent
 @app.route("/agent")
 def agent_page():
     return render_template("agent.html")
 
-
-# When someone visits http://127.0.0.1:5000/admin
 @app.route("/admin")
 def admin_page():
-    conn = sqlite3.connect("/data/dropnote.db")
-    conn.row_factory = sqlite3.Row  # so we can use row["name"] instead of row[0]
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     records = conn.execute("SELECT * FROM preferences ORDER BY id DESC").fetchall()
     conn.close()
     return render_template("admin.html", records=records)
 
+# Serve uploaded photos
+@app.route("/uploads/<filename>")
+def uploaded_photo(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
 
 # ------------------------------------------------------
-# STEP 3: API ROUTES
-# These don't show pages - they handle data.
-# Frontend sends data here using fetch().
+# API ROUTES
 # ------------------------------------------------------
 
-# Customer saves their backup preference
 @app.route("/api/save", methods=["POST"])
 def save_preference():
-    # Read the data sent from customer.html
-    data    = request.get_json()
-    name    = data.get("name", "").strip()
-    phone   = data.get("phone", "").strip()
-    address = data.get("address", "").strip()
+    data     = request.get_json()
+    name     = data.get("name", "").strip()
+    phone    = data.get("phone", "").strip()
+    address  = data.get("address", "").strip()
     leave_at = data.get("leave_at", "").strip()
-    note    = data.get("note", "").strip()
+    note     = data.get("note", "").strip()
 
-    # Check all required fields are filled
     if not name or not phone or not address or not leave_at:
         return jsonify({"success": False, "message": "Please fill all fields"})
 
-    # Save to database
-    conn = sqlite3.connect("/data/dropnote.db")
+    conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         INSERT INTO preferences (name, phone, address, leave_at, note, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -121,7 +103,6 @@ def save_preference():
     return jsonify({"success": True, "message": "Preference saved!"})
 
 
-# Agent looks up a customer by phone number
 @app.route("/api/lookup", methods=["POST"])
 def lookup():
     data  = request.get_json()
@@ -130,8 +111,7 @@ def lookup():
     if not phone:
         return jsonify({"success": False, "message": "Please enter a phone number"})
 
-    # Search database for this phone number
-    conn = sqlite3.connect("/data/dropnote.db")
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     record = conn.execute(
         "SELECT * FROM preferences WHERE phone = ? AND status = 'pending' ORDER BY id DESC LIMIT 1",
@@ -142,7 +122,6 @@ def lookup():
     if not record:
         return jsonify({"success": False, "message": "No preference found for this number"})
 
-    # Return the delivery instructions
     return jsonify({
         "success":  True,
         "id":       record["id"],
@@ -153,81 +132,34 @@ def lookup():
     })
 
 
-# Agent uploads photo and marks delivery as done
-# Note: photo uploads use request.files (not request.get_json)
-# because files cannot be sent as JSON
 @app.route("/api/done", methods=["POST"])
 def mark_done():
-    try:
-        record_id = request.form.get("id")   # get record ID from form
-        photo     = request.files.get("photo")  # get the uploaded photo file
+    record_id = request.form.get("id")
+    photo     = request.files.get("photo")
 
-        # Log incoming request details so we can see what arrived
-        photo_filename = photo.filename if photo else None
-        photo_size = photo.content_length if photo else 'N/A'
-        print(f"[/api/done] record_id={record_id!r}  "
-              f"photo_filename={photo_filename!r}  "
-              f"photo_size={photo_size}")
+    if not record_id:
+        return jsonify({"success": False, "message": "Missing record ID"})
 
-        # Make sure both are provided
-        if not record_id:
-            print("[/api/done] ERROR: Missing record ID")
-            return jsonify({"success": False, "message": "Missing record ID"})
+    if not photo or photo.filename == "":
+        return jsonify({"success": False, "message": "Please upload a photo proof"})
 
-        if not photo or photo.filename == "":
-            print("[/api/done] ERROR: No photo file received")
-            return jsonify({"success": False, "message": "Please upload a photo proof"})
+    filename = secure_filename("proof_" + str(record_id) + "_" + photo.filename)
+    photo.save(os.path.join(UPLOAD_FOLDER, filename))
 
-        # Save the photo with a safe filename
-        # secure_filename removes any dangerous characters from filename
-        filename = secure_filename("proof_" + record_id + "_" + photo.filename)
-        save_path = os.path.join(UPLOAD_FOLDER, filename)
-        print(f"[/api/done] Saving photo to: {save_path}")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "UPDATE preferences SET status = 'delivered', photo = ? WHERE id = ?",
+        (filename, record_id)
+    )
+    conn.commit()
+    conn.close()
 
-        try:
-            photo.save(save_path)
-            print(f"[/api/done] Photo saved successfully: {save_path}")
-        except Exception as file_err:
-            print(f"[/api/done] ERROR saving photo: {file_err}")
-            traceback.print_exc()
-            return jsonify({"success": False,
-                            "message": f"Failed to save photo: {file_err}"})
-
-        # Update database - mark as delivered and save photo filename
-        print(f"[/api/done] Updating database for record id={record_id}")
-        try:
-            conn = sqlite3.connect("/data/dropnote.db")
-            conn.execute(
-                "UPDATE preferences SET status = 'delivered', photo = ? WHERE id = ?",
-                (filename, record_id)
-            )
-            conn.commit()
-            conn.close()
-            print(f"[/api/done] Database updated successfully for record id={record_id}")
-        except Exception as db_err:
-            print(f"[/api/done] ERROR updating database: {db_err}")
-            traceback.print_exc()
-            return jsonify({"success": False,
-                            "message": f"Failed to update database: {db_err}"})
-
-        return jsonify({"success": True, "message": "Delivery marked complete!"})
-
-    except Exception as e:
-        print(f"[/api/done] UNEXPECTED ERROR: {e}")
-        traceback.print_exc()
-        return jsonify({"success": False, "message": f"Unexpected server error: {e}"})
-
-
-# Serve uploaded photos when admin clicks them
-@app.route("/static/uploads/<filename>")
-def uploaded_photo(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+    return jsonify({"success": True, "message": "Delivery marked complete!"})
 
 
 # ------------------------------------------------------
 # START THE SERVER
 # ------------------------------------------------------
 if __name__ == "__main__":
-    create_table()  # make sure our table exists
     print("Server running at http://127.0.0.1:5000")
     app.run(debug=True, host="0.0.0.0", port=5000)
