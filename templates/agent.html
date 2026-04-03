@@ -194,22 +194,27 @@
     </div>
 
     <!-- PHOTO UPLOAD -->
-    <!-- This is simple - just a file input, like attaching a photo to an email -->
-    <label style="display:block; margin-bottom:6px; color:#aaa; font-size:13px; font-weight:bold">
-      📷 Upload Photo Proof (required)
-    </label>
-    <input
-      type="file"
-      id="inp-photo"
-      accept="image/*"
-      capture="environment"
-      style="width:100%; padding:10px; background:#0f3460; border:1px solid #444;
-             border-radius:6px; color:white; margin-bottom:8px; font-size:13px;"
-    />
+<label style="display:block; margin-bottom:6px; color:#aaa; font-size:13px; font-weight:bold">
+  📷 Upload Photo Proof (required)
+</label>
 
-    <!-- Preview of selected photo -->
-    <img id="photo-preview" style="display:none; width:100%; border-radius:6px;
-         margin-bottom:10px; border:1px solid #444;" alt="Photo preview"/>
+<!-- Hidden file input -->
+<input type="file" id="inp-photo" accept="image/*" capture="environment"
+       style="display:none"/>
+
+<!-- Button to trigger camera -->
+<button class="btn btn-amber" type="button" style="margin-bottom:8px"
+        onclick="document.getElementById('inp-photo').click()">
+  📷 Take / Choose Photo
+</button>
+
+<!-- Preview shown after photo selected -->
+<img id="photo-preview" style="display:none; width:100%; border-radius:6px;
+     margin-bottom:10px; border:1px solid #444;" alt="Photo preview"/>
+
+<p id="photo-name" style="display:none; font-size:12px; color:#5aaa7e; margin-bottom:8px">
+  ✅ Photo selected
+</p>
 
     <button class="btn btn-green" id="done-btn" onclick="markDone()">
       ✅ Submit Photo & Mark as Delivered
@@ -226,160 +231,116 @@
 </div>
 
 <script>
-  // Stores the database ID of the found record
-  var currentId = null;
+  var currentId     = null;
+var selectedPhoto = null;
 
-  // Stores the photo file the moment agent selects it
-  // This fixes mobile upload issues where file reference gets lost
-  var selectedPhoto = null;
+async function lookupCustomer() {
+  var phone = document.getElementById("inp-phone").value.trim();
+  var btn   = document.getElementById("lookup-btn");
+  var msg   = document.getElementById("lookup-msg");
 
-  // STEP 1: Look up customer by phone number
-  async function lookupCustomer() {
-    var phone = document.getElementById("inp-phone").value.trim();
-    var btn   = document.getElementById("lookup-btn");
-    var msg   = document.getElementById("lookup-msg");
+  if (!phone) { showMsg(msg, "Please enter a phone number", "error"); return; }
 
-    if (!phone) {
-      showMsg(msg, "Please enter a phone number", "error");
+  btn.disabled = true; btn.textContent = "Looking up...";
+
+  var response = await fetch("/api/lookup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: phone })
+  });
+  var data = await response.json();
+
+  if (data.success) {
+    currentId = data.id;
+    document.getElementById("i-leave").textContent   = data.leave_at;
+    document.getElementById("i-name").textContent    = data.name;
+    document.getElementById("i-address").textContent = data.address;
+    document.getElementById("i-note").textContent    = data.note;
+    document.getElementById("section-instructions").style.display = "block";
+    document.getElementById("section-checklist").style.display    = "block";
+    showMsg(msg, "✅ Found! Follow the instructions below.", "success");
+  } else {
+    showMsg(msg, "❌ " + data.message, "error");
+  }
+
+  btn.disabled = false; btn.textContent = "🔍 Find Delivery Instructions";
+}
+
+// Photo selection — store immediately when file chosen
+document.getElementById("inp-photo").addEventListener("change", function() {
+  var file = this.files[0];
+  if (!file) return;
+
+  selectedPhoto = file;
+
+  // Show preview
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var preview           = document.getElementById("photo-preview");
+    preview.src           = e.target.result;
+    preview.style.display = "block";
+    document.getElementById("photo-name").style.display = "block";
+  };
+  reader.readAsDataURL(file);
+});
+
+async function markDone() {
+  var allChecked =
+    document.getElementById("chk1").checked &&
+    document.getElementById("chk2").checked &&
+    document.getElementById("chk3").checked &&
+    document.getElementById("chk4").checked;
+
+  if (!allChecked) {
+    showMsg(document.getElementById("done-msg"),
+      "Please tick all boxes before marking as delivered.", "error");
+    return;
+  }
+
+  if (!selectedPhoto) {
+    showMsg(document.getElementById("done-msg"),
+      "Please take or upload a photo proof.", "error");
+    return;
+  }
+
+  var btn = document.getElementById("done-btn");
+  btn.disabled = true; btn.textContent = "Uploading...";
+
+  var formData = new FormData();
+  formData.append("id",    currentId);
+  formData.append("photo", selectedPhoto, selectedPhoto.name || "photo.jpg");
+
+  try {
+    var response = await fetch("/api/done", { method: "POST", body: formData });
+
+    if (!response.ok) {
+      showMsg(document.getElementById("done-msg"),
+        "Server error: " + response.status, "error");
+      btn.disabled = false;
+      btn.textContent = "✅ Submit Photo & Mark as Delivered";
       return;
     }
-
-    btn.disabled    = true;
-    btn.textContent = "Looking up...";
-
-    // Send phone number to Flask
-    var response = await fetch("/api/lookup", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ phone: phone })
-    });
 
     var data = await response.json();
 
     if (data.success) {
-      // Save the record ID for later
-      currentId = data.id;
-
-      // Fill in the instruction box
-      document.getElementById("i-leave").textContent   = data.leave_at;
-      document.getElementById("i-name").textContent    = data.name;
-      document.getElementById("i-address").textContent = data.address;
-      document.getElementById("i-note").textContent    = data.note;
-
-      // Show the instructions and checklist
-      document.getElementById("section-instructions").style.display = "block";
-      document.getElementById("section-checklist").style.display    = "block";
-
-      showMsg(msg, "✅ Found! Follow the instructions below.", "success");
-
-    } else {
-      showMsg(msg, "❌ " + data.message, "error");
-    }
-
-    btn.disabled    = false;
-    btn.textContent = "🔍 Find Delivery Instructions";
-  }
-
-  // When agent selects or takes a photo
-  document.getElementById("inp-photo").addEventListener("change", function() {
-    var file = this.files[0];
-    if (!file) return;
-
-    // Save photo immediately into our variable
-    // On mobile, waiting until submit can lose the file
-    selectedPhoto = file;
-
-    // Show a preview of the photo on screen
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      var preview          = document.getElementById("photo-preview");
-      preview.src          = e.target.result;
-      preview.style.display = "block";
-    };
-    reader.readAsDataURL(file);
-  });
-
-  // STEP 2: Mark delivery as done
-  async function markDone() {
-
-    // Check all 4 boxes are ticked
-    var allChecked =
-      document.getElementById("chk1").checked &&
-      document.getElementById("chk2").checked &&
-      document.getElementById("chk3").checked &&
-      document.getElementById("chk4").checked;
-
-    if (!allChecked) {
-      showMsg(
-        document.getElementById("done-msg"),
-        "Please tick all boxes before marking as delivered.",
-        "error"
-      );
-      return;
-    }
-
-    // Check photo is selected
-    if (!selectedPhoto) {
-      showMsg(
-        document.getElementById("done-msg"),
-        "Please take or upload a photo proof.",
-        "error"
-      );
-      return;
-    }
-
-    var btn = document.getElementById("done-btn");
-    btn.disabled    = true;
-    btn.textContent = "Uploading...";
-
-    // FormData carries both the record ID and the photo file
-    var formData = new FormData();
-    formData.append("id",    currentId);
-    formData.append("photo", selectedPhoto);
-
-    var response = await fetch("/api/done", {
-  method: "POST",
-  body:   formData
-});
-
-// Check if server responded properly
-if (!response.ok) {
-  showMsg(
-    document.getElementById("done-msg"),
-    "Server error: " + response.status + " " + response.statusText,
-    "error"
-  );
-  btn.disabled    = false;
-  btn.textContent = "✅ Submit Photo & Mark as Delivered";
-  return;
-}
-
-var data = await response.json();
-
-    if (data.success) {
-      showMsg(
-        document.getElementById("done-msg"),
-        "🎉 Photo uploaded! Delivery marked complete.",
-        "success"
-      );
+      showMsg(document.getElementById("done-msg"),
+        "🎉 Photo uploaded! Delivery marked complete.", "success");
       btn.style.display = "none";
     } else {
-      showMsg(
-        document.getElementById("done-msg"),
-        "❌ " + data.message,
-        "error"
-      );
-      btn.disabled    = false;
-      btn.textContent = "✅ Submit Photo & Mark as Delivered";
+      showMsg(document.getElementById("done-msg"), "❌ " + data.message, "error");
+      btn.disabled = false; btn.textContent = "✅ Submit Photo & Mark as Delivered";
     }
+  } catch (err) {
+    showMsg(document.getElementById("done-msg"),
+      "❌ Connection error: " + err.message, "error");
+    btn.disabled = false; btn.textContent = "✅ Submit Photo & Mark as Delivered";
   }
+}
 
-  // Helper: show a coloured message box
-  function showMsg(el, text, type) {
-    el.textContent    = text;
-    el.className      = "message " + type;
-    el.style.display  = "block";
-  }
+function showMsg(el, text, type) {
+  el.textContent = text; el.className = "message " + type; el.style.display = "block";
+}
 </script>
 
 </body>
