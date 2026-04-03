@@ -55,6 +55,10 @@ def create_table():
     conn.close()   # close the connection
 
 
+# Run once at import time so Gunicorn (and direct runs) both initialise the DB
+create_table()
+
+
 # ------------------------------------------------------
 # STEP 2: PAGE ROUTES
 # A route is a URL that shows a page.
