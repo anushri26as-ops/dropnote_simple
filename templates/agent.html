@@ -282,12 +282,15 @@
 
   // When agent selects or takes a photo
   document.getElementById("inp-photo").addEventListener("change", function() {
+    console.log("[photo] change event fired, files:", this.files);
     var file = this.files[0];
     if (!file) return;
+    console.log("[photo] file detected:", file.name, file.type, file.size, "bytes");
 
     // Save photo immediately into our variable
     // On mobile, waiting until submit can lose the file
     selectedPhoto = file;
+    console.log("[photo] selectedPhoto set to:", selectedPhoto);
 
     // Show a preview of the photo on screen
     var reader = new FileReader();
@@ -295,12 +298,14 @@
       var preview          = document.getElementById("photo-preview");
       preview.src          = e.target.result;
       preview.style.display = "block";
+      console.log("[photo] preview shown for:", file.name);
     };
     reader.readAsDataURL(file);
   });
 
   // STEP 2: Mark delivery as done
   async function markDone() {
+    console.log("[markDone] called, selectedPhoto:", selectedPhoto);
 
     // Check all 4 boxes are ticked
     var allChecked =
