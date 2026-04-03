@@ -163,9 +163,11 @@ def mark_done():
         photo     = request.files.get("photo")  # get the uploaded photo file
 
         # Log incoming request details so we can see what arrived
+        photo_filename = photo.filename if photo else None
+        photo_size = photo.content_length if photo else 'N/A'
         print(f"[/api/done] record_id={record_id!r}  "
-              f"photo_filename={photo.filename!r if photo else None}  "
-              f"photo_size={photo.content_length if photo else 'N/A'}")
+              f"photo_filename={photo_filename!r}  "
+              f"photo_size={photo_size}")
 
         # Make sure both are provided
         if not record_id:
