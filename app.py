@@ -15,6 +15,7 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
 import sqlite3
 import os
+import traceback
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -24,6 +25,7 @@ app = Flask(__name__)
 # Folder where agent photos are saved
 UPLOAD_FOLDER = "/data/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # creates folder if it doesn't exist
+print(f"[startup] Upload folder ready: {UPLOAD_FOLDER}")
 
 
 # ------------------------------------------------------
@@ -156,31 +158,62 @@ def lookup():
 # because files cannot be sent as JSON
 @app.route("/api/done", methods=["POST"])
 def mark_done():
-    record_id = request.form.get("id")   # get record ID from form
-    photo     = request.files.get("photo")  # get the uploaded photo file
+    try:
+        record_id = request.form.get("id")   # get record ID from form
+        photo     = request.files.get("photo")  # get the uploaded photo file
 
-    # Make sure both are provided
-    if not record_id:
-        return jsonify({"success": False, "message": "Missing record ID"})
+        # Log incoming request details so we can see what arrived
+        print(f"[/api/done] record_id={record_id!r}  "
+              f"photo_filename={photo.filename!r if photo else None}  "
+              f"photo_size={photo.content_length if photo else 'N/A'}")
 
-    if not photo or photo.filename == "":
-        return jsonify({"success": False, "message": "Please upload a photo proof"})
+        # Make sure both are provided
+        if not record_id:
+            print("[/api/done] ERROR: Missing record ID")
+            return jsonify({"success": False, "message": "Missing record ID"})
 
-    # Save the photo with a safe filename
-    # secure_filename removes any dangerous characters from filename
-    filename = secure_filename("proof_" + record_id + "_" + photo.filename)
-    photo.save(os.path.join(UPLOAD_FOLDER, filename))
+        if not photo or photo.filename == "":
+            print("[/api/done] ERROR: No photo file received")
+            return jsonify({"success": False, "message": "Please upload a photo proof"})
 
-    # Update database - mark as delivered and save photo filename
-    conn = sqlite3.connect("/data/dropnote.db")
-    conn.execute(
-        "UPDATE preferences SET status = 'delivered', photo = ? WHERE id = ?",
-        (filename, record_id)
-    )
-    conn.commit()
-    conn.close()
+        # Save the photo with a safe filename
+        # secure_filename removes any dangerous characters from filename
+        filename = secure_filename("proof_" + record_id + "_" + photo.filename)
+        save_path = os.path.join(UPLOAD_FOLDER, filename)
+        print(f"[/api/done] Saving photo to: {save_path}")
 
-    return jsonify({"success": True, "message": "Delivery marked complete!"})
+        try:
+            photo.save(save_path)
+            print(f"[/api/done] Photo saved successfully: {save_path}")
+        except Exception as file_err:
+            print(f"[/api/done] ERROR saving photo: {file_err}")
+            traceback.print_exc()
+            return jsonify({"success": False,
+                            "message": f"Failed to save photo: {file_err}"})
+
+        # Update database - mark as delivered and save photo filename
+        print(f"[/api/done] Updating database for record id={record_id}")
+        try:
+            conn = sqlite3.connect("/data/dropnote.db")
+            conn.execute(
+                "UPDATE preferences SET status = 'delivered', photo = ? WHERE id = ?",
+                (filename, record_id)
+            )
+            conn.commit()
+            conn.close()
+            print(f"[/api/done] Database updated successfully for record id={record_id}")
+        except Exception as db_err:
+            print(f"[/api/done] ERROR updating database: {db_err}")
+            traceback.print_exc()
+            return jsonify({"success": False,
+                            "message": f"Failed to update database: {db_err}"})
+
+        return jsonify({"success": True, "message": "Delivery marked complete!"})
+
+    except Exception as e:
+        print(f"[/api/done] UNEXPECTED ERROR: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": f"Unexpected server error: {e}"})
 
 
 # Serve uploaded photos when admin clicks them
